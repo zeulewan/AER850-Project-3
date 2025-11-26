@@ -3,47 +3,46 @@ AER850 Project 3 – PCB Masking + YOLOv11 Training + Evaluation
 
 - Step 1: Object masking of motherboard_image.JPEG using OpenCV
 - Step 2: YOLOv11 nano training on PCB dataset using Ultralytics
-- Step 3: Evaluate 3 images in Evaluation/ using model.predict()
+- Step 3: Evaluation of images in the evaluation directory using model.predict()
 """
 
-import os
+import os  # Standard library, currently unused but retained for potential future use
 
-import cv2
-import numpy as np
-from ultralytics import YOLO
+import cv2  # OpenCV for image processing
+import numpy as np  # NumPy for numerical operations
+from ultralytics import YOLO  # Ultralytics YOLOv11 interface
 
+from pathlib import Path  # Object-oriented filesystem paths
 
-from pathlib import Path
 
 # =========================
 # CONFIG
 # =========================
 
-# Root of this project (folder that contains project3.py)
+# Root directory of the project (directory containing this script)
 PROJECT_ROOT = Path(__file__).resolve().parent
 
-# --- Paths ---
-# Motherboard image is in the same folder as project3.py
+# Path to the motherboard image used for masking
 MOTHERBOARD_IMAGE_PATH = PROJECT_ROOT / "motherboard_image.JPEG"
 
-# Where to save masking results (this folder will be created)
+# Directory where masking results will be stored
 MASK_OUTPUT_DIR = PROJECT_ROOT / "masking_outputs"
 
-# Dataset YAML 
+# Path to YOLO dataset configuration file (Ultralytics YAML format)
 DATA_YAML = PROJECT_ROOT / "data" / "data.yaml"
 
-# YOLO runs directory (Ultralytics default under this project)
+# Root directory for YOLO runs (Ultralytics default convention)
 MODEL_WEIGHTS_DIR = PROJECT_ROOT / "runs" / "detect"
 
-# Folder with the 3 images you want to run predictions on
+# Directory containing evaluation images for final prediction
 EVAL_IMAGES_DIR = PROJECT_ROOT / "prediction imgs"
 
-# --- YOLO Training Hyperparameters ---
-RUN_NAME = "pcb_yolo11n"   # or any name you like
-EPOCHS = 100
-BATCH_SIZE = 8
-IMG_SIZE = 1024
-DEVICE = 0                 # RTX 3090 = GPU 0
+# YOLO training configuration
+RUN_NAME = "pcb_yolo11n"   # Name used for the training run subdirectory
+EPOCHS = 1                 # Number of training epochs
+BATCH_SIZE = 14            # Training batch size
+IMG_SIZE = 1024            # Input image size for YOLO (square)
+DEVICE = 0                 # CUDA device index (0 selects the first GPU)
 
 
 # =========================
@@ -51,6 +50,9 @@ DEVICE = 0                 # RTX 3090 = GPU 0
 # =========================
 
 def ensure_dir(path: Path):
+    """
+    Ensure that a directory exists; create it along with parents if necessary.
+    """
     path.mkdir(parents=True, exist_ok=True)
 
 
@@ -63,72 +65,80 @@ def step1_mask_motherboard(
     output_dir: Path = MASK_OUTPUT_DIR,
 ):
     """
-    1. Load original image
+    Perform PCB masking on the input motherboard image.
+
+    Processing pipeline:
+    1. Load original RGB image (in BGR format as used by OpenCV)
     2. Convert to grayscale
-    3. Apply Gaussian blur
-    4. Use Otsu thresholding to create a binary image
-    5. Use Canny edge detection for edge figure
-    6. Find largest external contour (assumed PCB outline)
-    7. Create mask from that contour
-    8. Extract PCB using cv2.bitwise_and
-    9. Save: edges, threshold, mask, extracted image
+    3. Apply Gaussian blur to reduce noise
+    4. Apply Otsu thresholding to obtain a binary image
+    5. Compute Canny edges for visualization
+    6. Locate the largest external contour as PCB outline
+    7. Create a binary mask from this contour
+    8. Extract PCB region via bitwise masking
+    9. Save intermediate and final results for reporting
     """
+    # Ensure that the directory for masking outputs exists
     ensure_dir(output_dir)
 
+    # Validate that the input motherboard image exists
     if not input_path.exists():
         raise FileNotFoundError(f"Motherboard image not found at {input_path}")
 
-    # 1. Load BGR image
+    # Load the original image as BGR (default OpenCV format)
     orig_bgr = cv2.imread(str(input_path))
     if orig_bgr is None:
         raise ValueError(f"Failed to read image at {input_path}")
 
-    # 2. Grayscale
+    # Convert BGR image to grayscale for subsequent processing
     gray = cv2.cvtColor(orig_bgr, cv2.COLOR_BGR2GRAY)
 
-    # 3. Gaussian blur to reduce noise
+    # Apply Gaussian blur to reduce high-frequency noise and improve thresholding
     blurred = cv2.GaussianBlur(gray, (5, 5), 0)
 
-    # 4. Otsu thresholding
+    # Apply Otsu's thresholding to obtain a binary image automatically
     _, thresh = cv2.threshold(
         blurred, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU
     )
 
-    # Invert if background/PCB polarity is wrong (simple heuristic)
-    # We assume PCB should be foreground (white) occupying more area
+    # Compute proportion of white pixels to infer foreground/background polarity
     white_ratio = np.mean(thresh == 255)
+    # Invert binary image if PCB area is likely represented as black (foreground swap)
     if white_ratio < 0.5:
         thresh = cv2.bitwise_not(thresh)
 
-    # Optional morphological closing to fill small gaps in PCB region
+    # Create a structuring element for morphological operations
     kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (7, 7))
+    # Perform morphological closing to fill gaps and smooth the PCB region
     thresh_closed = cv2.morphologyEx(thresh, cv2.MORPH_CLOSE, kernel, iterations=2)
 
-    # 5. Canny edge detection (for edge figure)
+    # Compute Canny edges for visualization of detected edges
     edges = cv2.Canny(blurred, 100, 200)
 
-    # 6. Find contours on the binary mask
+    # Find external contours on the processed binary image
     contours, _ = cv2.findContours(
         thresh_closed, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
     )
 
+    # Abort if no contours are detected (indicates a preprocessing issue)
     if not contours:
-        raise RuntimeError("No contours found – adjust thresholding parameters.")
+        raise RuntimeError("No contours found – thresholding parameters may require adjustment.")
 
-    # Largest contour by area is assumed to be the PCB outline
+    # Select the contour with maximum area as the PCB outline
     largest_contour = max(contours, key=cv2.contourArea)
 
-    # 7. Create a blank mask and draw the largest contour as a filled shape
+    # Initialize an empty mask (single-channel, same size as input)
     mask = np.zeros_like(gray)
+    # Fill the largest contour area on the mask with white (255)
     cv2.drawContours(mask, [largest_contour], contourIdx=-1, color=255, thickness=cv2.FILLED)
 
-    # Optional refinement (e.g., slight erosion/dilation) if edge is noisy
+    # Optionally refine the mask via morphological opening to remove small artifacts
     mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel, iterations=1)
 
-    # 8. Extract PCB
+    # Apply the binary mask to the original image to isolate the PCB
     extracted_bgr = cv2.bitwise_and(orig_bgr, orig_bgr, mask=mask)
 
-    # 9. Save intermediate and final images for use in report
+    # Persist intermediate and final images for documentation and analysis
     cv2.imwrite(str(output_dir / "01_gray.png"), gray)
     cv2.imwrite(str(output_dir / "02_thresh_otsu.png"), thresh)
     cv2.imwrite(str(output_dir / "03_thresh_closed.png"), thresh_closed)
@@ -152,33 +162,38 @@ def step2_train_yolo(
     device: int | str = DEVICE,
 ):
     """
-    Train YOLOv11 nano (yolo11n.pt) on provided PCB dataset.
+    Train a YOLOv11 nano detection model on the PCB dataset.
 
-    Ultralytics automatically creates runs/detect/<run_name> with:
-    - best.pt, last.pt (weights)
-    - metrics, confusion matrix, PR, P-confidence curves, etc.
+    Ultralytics automatically creates runs in:
+        runs/detect/<run_name>/
+    containing:
+        - Weights: best.pt, last.pt
+        - Training metrics and plots
     """
+    # Verify that the dataset YAML exists at the configured location
     if not data_yaml.exists():
         raise FileNotFoundError(f"Dataset YAML not found at {data_yaml}")
 
+    # Instantiate YOLOv11 nano model (weights automatically downloaded if missing)
     print("[STEP 2] Loading YOLOv11 nano model (yolo11n.pt)...")
-    model = YOLO("yolo11n.pt")  # downloads if not present
+    model = YOLO("yolo11n.pt")
 
+    # Launch training with specified hyperparameters
     print("[STEP 2] Starting training...")
     results = model.train(
-        data=str(data_yaml),
-        epochs=epochs,
-        imgsz=img_size,
-        batch=batch_size,
-        device=device,
-        name=run_name,
-        # Optional extras:
-        # workers=8,
-        # patience=50,  # early stopping
+        data=str(data_yaml),   # Path to dataset configuration YAML
+        epochs=epochs,         # Number of training epochs
+        imgsz=img_size,        # Input spatial resolution
+        batch=batch_size,      # Training batch size
+        device=device,         # Compute device (GPU index or 'cpu')
+        name=run_name,         # Run name used for output directory
+        # Optional arguments left commented for clarity and potential extension:
+        # workers=8,           # Number of data loading workers
+        # patience=50,         # Early stopping patience
     )
 
     print(f"[STEP 2] Training complete. Results in runs/detect/{run_name}")
-    return model, results
+    return model, results  # Return model and training results object
 
 
 # =========================
@@ -192,52 +207,58 @@ def step3_evaluate(
     device: int | str = DEVICE,
 ):
     """
-    Use trained YOLO model to run predictions on the 3 evaluation images.
+    Evaluate the trained YOLO model on a set of evaluation images.
 
-    - Loads runs/detect/<run_name>/weights/best.pt
-    - Uses model.predict() on each image
-    - Saves annotated images to runs/detect/<run_name>_eval/
+    Evaluation procedure:
+    - Load best-performing weights from training run
+    - Run prediction on each image in the evaluation directory
+    - Save annotated predictions under a dedicated evaluation run directory
     """
+    # Ensure that the evaluation directory is available
     if not eval_dir.exists():
         raise FileNotFoundError(f"Evaluation folder not found at {eval_dir}")
 
-    # Get best weights from training
+    # Construct the path to the best model weights within the YOLO run directory
     best_weights = MODEL_WEIGHTS_DIR / run_name / "weights" / "best.pt"
     if not best_weights.exists():
         raise FileNotFoundError(
             f"best.pt not found at {best_weights}. "
-            f"Make sure training finished successfully."
+            f"Ensure that training completed successfully."
         )
 
+    # Load the trained YOLO model from the best-performing weights
     print(f"[STEP 3] Loading trained model weights: {best_weights}")
     model = YOLO(str(best_weights))
 
-    # Collect images (jpg, jpeg, png)
+    # Collect all evaluation images with supported file extensions
     eval_images = sorted(
         [p for p in eval_dir.iterdir() if p.suffix.lower() in {".jpg", ".jpeg", ".png"}]
     )
 
+    # Raise an error if no evaluation images are present
     if not eval_images:
         raise RuntimeError(f"No evaluation images found in {eval_dir}")
 
     print(f"[STEP 3] Found {len(eval_images)} evaluation images.")
 
-    # Use a dedicated run name for eval outputs
+    # Name for the evaluation run; separates prediction outputs from training artifacts
     eval_run_name = f"{run_name}_eval"
 
+    # Run inference on each evaluation image
     for img_path in eval_images:
         print(f"[STEP 3] Predicting on {img_path.name} ...")
-        # Using model.predict() as required by assignment
+        # Use model.predict() as required for generating annotated outputs
         model.predict(
-            source=str(img_path),
-            imgsz=img_size,
-            conf=0.25,        # adjust if needed
-            device=device,
-            save=True,
-            project=str(MODEL_WEIGHTS_DIR),
-            name=eval_run_name,
+            source=str(img_path),      # Path to the input image
+            imgsz=img_size,            # Inference image size
+            conf=0.25,                 # Confidence threshold for detections
+            device=device,             # Compute device for inference
+            save=True,                 # Save visualized predictions
+            project=str(MODEL_WEIGHTS_DIR),  # Root directory for prediction outputs
+            name=eval_run_name,        # Subdirectory for this evaluation run
         )
 
+    # Print final location of evaluation outputs
     print(
         f"[STEP 3] Evaluation complete. Annotated images saved to "
         f"{(MODEL_WEIGHTS_DIR / eval_run_name).resolve()}"
@@ -249,18 +270,25 @@ def step3_evaluate(
 # =========================
 
 def main():
-    # STEP 1: Mask PCB from background
+    """
+    Main execution pipeline:
+    1. Perform PCB masking on the motherboard image.
+    2. Train YOLOv11 nano on the configured PCB dataset.
+    3. Evaluate the trained model on the evaluation image set.
+    """
+    # Execute Step 1: PCB object masking
     print("========== STEP 1: OBJECT MASKING ==========")
     step1_mask_motherboard()
 
-    # STEP 2: Train YOLOv11 on PCB dataset
+    # Execute Step 2: YOLOv11 model training
     print("\n========== STEP 2: YOLOv11 TRAINING ==========")
     model, _ = step2_train_yolo()
 
-    # STEP 3: Evaluate three test images
+    # Execute Step 3: Model evaluation on selected images
     print("\n========== STEP 3: EVALUATION ==========")
     step3_evaluate()
 
 
+# Execute main pipeline when script is run as the primary module
 if __name__ == "__main__":
     main()

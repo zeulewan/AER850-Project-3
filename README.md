@@ -38,3 +38,6 @@ conda activate aer850_proj3
 
 # 3) Install core Python dependencies
 pip install ultralytics opencv-python numpy matplotlib pillow
+```
+
+```nvidia-smi``` to check gpu stats
