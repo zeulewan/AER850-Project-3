@@ -96,15 +96,14 @@ def step1_mask_motherboard(
     # Apply Gaussian blur to reduce high-frequency noise and improve thresholding
     blurred = cv2.GaussianBlur(gray, (5, 5), 0)
 
-    # Apply Otsu's thresholding to obtain a binary image automatically
-    _, thresh = cv2.threshold(
-        blurred, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU
-    )
+    # 4. Manual thresholding on the blurred image (tune 'thresh_value' as needed)
+    thresh_value = 120  # can be adjusted: 110, 130, 150, etc.
+    _, thresh = cv2.threshold(blurred, thresh_value, 255, cv2.THRESH_BINARY)
 
-    # Compute proportion of white pixels to infer foreground/background polarity
+    # Check polarity: ensure PCB region becomes white (foreground)
     white_ratio = np.mean(thresh == 255)
-    # Invert binary image if PCB area is likely represented as black (foreground swap)
     if white_ratio < 0.5:
+        # If white area is too small, invert so the board becomes foreground
         thresh = cv2.bitwise_not(thresh)
 
     # Create a structuring element for morphological operations
@@ -280,13 +279,13 @@ def main():
     print("========== STEP 1: OBJECT MASKING ==========")
     step1_mask_motherboard()
 
-    # Execute Step 2: YOLOv11 model training
-    print("\n========== STEP 2: YOLOv11 TRAINING ==========")
-    model, _ = step2_train_yolo()
+    # # Execute Step 2: YOLOv11 model training
+    # print("\n========== STEP 2: YOLOv11 TRAINING ==========")
+    # model, _ = step2_train_yolo()
 
-    # Execute Step 3: Model evaluation on selected images
-    print("\n========== STEP 3: EVALUATION ==========")
-    step3_evaluate()
+    # # Execute Step 3: Model evaluation on selected images
+    # print("\n========== STEP 3: EVALUATION ==========")
+    # step3_evaluate()
 
 
 # Execute main pipeline when script is run as the primary module
