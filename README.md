@@ -11,7 +11,7 @@ All main logic is in `project3.py`.
 
 ## 1. Requirements
 
-- **Operating system**: Linux / Windows / macOS
+- **Operating system**: Ubuntu
 - **Conda** (Miniconda or Anaconda)
 - **Python**: 3.11 (used in this setup)
 - **GPU**: CUDA-capable (e.g., RTX 3090) + NVIDIA drivers installed
@@ -40,4 +40,4 @@ conda activate aer850_proj3
 pip install ultralytics opencv-python numpy matplotlib pillow
 ```
 
-```nvidia-smi``` to check gpu stats
+```watch -n 1 nvidia-smi``` to check gpu stats

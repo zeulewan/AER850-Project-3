@@ -35,12 +35,12 @@ DATA_YAML = PROJECT_ROOT / "data" / "data.yaml"
 MODEL_WEIGHTS_DIR = PROJECT_ROOT / "runs" / "detect"
 
 # Directory containing evaluation images for final prediction
-EVAL_IMAGES_DIR = PROJECT_ROOT / "prediction imgs"
+EVAL_IMAGES_DIR = PROJECT_ROOT / "data" / "evaluation"
 
 # YOLO training configuration
 RUN_NAME = "pcb_yolo11n"   # Name used for the training run subdirectory
-EPOCHS = 1                 # Number of training epochs
-BATCH_SIZE = 14            # Training batch size
+EPOCHS = 100                 # Number of training epochs
+BATCH_SIZE = 15            # Training batch size
 IMG_SIZE = 1024            # Input image size for YOLO (square)
 DEVICE = 0                 # CUDA device index (0 selects the first GPU)
 
@@ -89,6 +89,9 @@ def step1_mask_motherboard(
     orig_bgr = cv2.imread(str(input_path))
     if orig_bgr is None:
         raise ValueError(f"Failed to read image at {input_path}")
+
+    # Rotate 90 degrees clockwise (to the right)
+    orig_bgr = cv2.rotate(orig_bgr, cv2.ROTATE_90_CLOCKWISE)
 
     # Convert BGR image to grayscale for subsequent processing
     gray = cv2.cvtColor(orig_bgr, cv2.COLOR_BGR2GRAY)
@@ -279,13 +282,13 @@ def main():
     print("========== STEP 1: OBJECT MASKING ==========")
     step1_mask_motherboard()
 
-    # # Execute Step 2: YOLOv11 model training
-    # print("\n========== STEP 2: YOLOv11 TRAINING ==========")
-    # model, _ = step2_train_yolo()
+    # Execute Step 2: YOLOv11 model training
+    print("\n========== STEP 2: YOLOv11 TRAINING ==========")
+    model, _ = step2_train_yolo()
 
-    # # Execute Step 3: Model evaluation on selected images
-    # print("\n========== STEP 3: EVALUATION ==========")
-    # step3_evaluate()
+    # Execute Step 3: Model evaluation on selected images
+    print("\n========== STEP 3: EVALUATION ==========")
+    step3_evaluate()
 
 
 # Execute main pipeline when script is run as the primary module
