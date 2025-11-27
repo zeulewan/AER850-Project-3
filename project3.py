@@ -39,8 +39,8 @@ EVAL_IMAGES_DIR = PROJECT_ROOT / "data" / "evaluation"
 
 # YOLO training configuration
 RUN_NAME = "pcb_yolo11n"   # Name used for the training run subdirectory
-EPOCHS = 100                 # Number of training epochs
-BATCH_SIZE = 15            # Training batch size
+EPOCHS = 200               # Number of training epochs
+BATCH_SIZE = 14            # Training batch size
 IMG_SIZE = 1024            # Input image size for YOLO (square)
 DEVICE = 0                 # CUDA device index (0 selects the first GPU)
 
@@ -71,7 +71,7 @@ def step1_mask_motherboard(
     1. Load original RGB image (in BGR format as used by OpenCV)
     2. Convert to grayscale
     3. Apply Gaussian blur to reduce noise
-    4. Apply Otsu thresholding to obtain a binary image
+    4. Apply thresholding to obtain a binary image
     5. Compute Canny edges for visualization
     6. Locate the largest external contour as PCB outline
     7. Create a binary mask from this contour
@@ -99,7 +99,7 @@ def step1_mask_motherboard(
     # Apply Gaussian blur to reduce high-frequency noise and improve thresholding
     blurred = cv2.GaussianBlur(gray, (5, 5), 0)
 
-    # 4. Manual thresholding on the blurred image (tune 'thresh_value' as needed)
+    # Manual thresholding on the blurred image (tune 'thresh_value' as needed)
     thresh_value = 120  # can be adjusted: 110, 130, 150, etc.
     _, thresh = cv2.threshold(blurred, thresh_value, 255, cv2.THRESH_BINARY)
 
@@ -142,7 +142,7 @@ def step1_mask_motherboard(
 
     # Persist intermediate and final images for documentation and analysis
     cv2.imwrite(str(output_dir / "01_gray.png"), gray)
-    cv2.imwrite(str(output_dir / "02_thresh_otsu.png"), thresh)
+    cv2.imwrite(str(output_dir / "02_thresh.png"), thresh)
     cv2.imwrite(str(output_dir / "03_thresh_closed.png"), thresh_closed)
     cv2.imwrite(str(output_dir / "04_edges_canny.png"), edges)
     cv2.imwrite(str(output_dir / "05_mask.png"), mask)
@@ -207,6 +207,8 @@ def step3_evaluate(
     run_name: str = RUN_NAME,
     img_size: int = IMG_SIZE,
     device: int | str = DEVICE,
+    font_size: float = 0.4,   # smaller label text
+    line_width: int = 1,      # thinner boxes
 ):
     """
     Evaluate the trained YOLO model on a set of evaluation images.
@@ -214,7 +216,7 @@ def step3_evaluate(
     Evaluation procedure:
     - Load best-performing weights from training run
     - Run prediction on each image in the evaluation directory
-    - Save annotated predictions under a dedicated evaluation run directory
+    - Manually draw and save annotated predictions with custom font size and line width
     """
     # Ensure that the evaluation directory is available
     if not eval_dir.exists():
@@ -245,25 +247,45 @@ def step3_evaluate(
 
     # Name for the evaluation run; separates prediction outputs from training artifacts
     eval_run_name = f"{run_name}_eval"
+    eval_output_dir = MODEL_WEIGHTS_DIR / eval_run_name
+    ensure_dir(eval_output_dir)
 
     # Run inference on each evaluation image
     for img_path in eval_images:
         print(f"[STEP 3] Predicting on {img_path.name} ...")
-        # Use model.predict() as required for generating annotated outputs
-        model.predict(
-            source=str(img_path),      # Path to the input image
-            imgsz=img_size,            # Inference image size
-            conf=0.25,                 # Confidence threshold for detections
-            device=device,             # Compute device for inference
-            save=True,                 # Save visualized predictions
-            project=str(MODEL_WEIGHTS_DIR),  # Root directory for prediction outputs
-            name=eval_run_name,        # Subdirectory for this evaluation run
+
+        # Run model.predict WITHOUT unsupported args like font_size / line_width
+        # and do not auto-save; we will save manually after plotting.
+        results = model.predict(
+            source=str(img_path),
+            imgsz=img_size,
+            conf=0.25,
+            device=device,
+            save=False,
         )
+
+        # results is usually a list of Result objects
+        for i, r in enumerate(results):
+            # Draw boxes/labels with custom style.
+            # r.plot returns an annotated BGR image as a NumPy array.
+            annotated = r.plot(
+                line_width=line_width,
+                font_size=font_size,
+            )
+
+            # If there are multiple frames, avoid overwriting by using an index
+            if len(results) > 1:
+                out_name = f"{img_path.stem}_{i}{img_path.suffix}"
+            else:
+                out_name = img_path.name
+
+            out_path = eval_output_dir / out_name
+            cv2.imwrite(str(out_path), annotated)
 
     # Print final location of evaluation outputs
     print(
         f"[STEP 3] Evaluation complete. Annotated images saved to "
-        f"{(MODEL_WEIGHTS_DIR / eval_run_name).resolve()}"
+        f"{eval_output_dir.resolve()}"
     )
 
 
@@ -288,7 +310,7 @@ def main():
 
     # Execute Step 3: Model evaluation on selected images
     print("\n========== STEP 3: EVALUATION ==========")
-    step3_evaluate()
+    step3_evaluate(font_size=1, line_width=1)
 
 
 # Execute main pipeline when script is run as the primary module

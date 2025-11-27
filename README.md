@@ -41,3 +41,20 @@ pip install ultralytics opencv-python numpy matplotlib pillow
 ```
 
 ```watch -n 1 nvidia-smi``` to check gpu stats
+
+
+```
+
+screen                 # start a new screen session
+screen -S name         # start a named session
+screen -ls             # list sessions
+screen -r              # reattach to last detached session
+screen -r name         # reattach to a named session
+screen -d -r name      # detach elsewhere and reattach here
+exit                   # quit the current screen window (or ^D)
+
+Detach without closing:
+Detach: C-a d
+
+
+```
