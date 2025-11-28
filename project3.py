@@ -39,8 +39,8 @@ EVAL_IMAGES_DIR = PROJECT_ROOT / "data" / "evaluation"
 
 # YOLO training configuration
 RUN_NAME = "pcb_yolo11n"   # Name used for the training run subdirectory
-EPOCHS = 200               # Number of training epochs
-BATCH_SIZE = 14            # Training batch size
+EPOCHS = 150               # Number of training epochs
+BATCH_SIZE = 12            # Training batch size
 IMG_SIZE = 1024            # Input image size for YOLO (square)
 DEVICE = 0                 # CUDA device index (0 selects the first GPU)
 
@@ -300,17 +300,17 @@ def main():
     2. Train YOLOv11 nano on the configured PCB dataset.
     3. Evaluate the trained model on the evaluation image set.
     """
-    # Execute Step 1: PCB object masking
-    print("========== STEP 1: OBJECT MASKING ==========")
-    step1_mask_motherboard()
+    # # Execute Step 1: PCB object masking
+    # print("========== STEP 1: OBJECT MASKING ==========")
+    # step1_mask_motherboard()
 
-    # Execute Step 2: YOLOv11 model training
-    print("\n========== STEP 2: YOLOv11 TRAINING ==========")
-    model, _ = step2_train_yolo()
+    # # Execute Step 2: YOLOv11 model training
+    # print("\n========== STEP 2: YOLOv11 TRAINING ==========")
+    # model, _ = step2_train_yolo()
 
     # Execute Step 3: Model evaluation on selected images
     print("\n========== STEP 3: EVALUATION ==========")
-    step3_evaluate(font_size=1, line_width=1)
+    step3_evaluate(font_size=1, line_width=7)
 
 
 # Execute main pipeline when script is run as the primary module
