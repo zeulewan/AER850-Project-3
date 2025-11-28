@@ -58,3 +58,5 @@ Detach: C-a d
 
 
 ```
+
+Make Sure to add the data and motherboard_image.JPEG to the workspace and active the conda environment before training.
